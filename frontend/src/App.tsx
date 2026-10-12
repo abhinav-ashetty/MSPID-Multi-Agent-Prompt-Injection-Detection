@@ -1,15 +1,19 @@
-import { Home } from './pages/Home';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { Dashboard } from './pages/Dashboard';
+import { Analyze } from './pages/Analyze';
+import { Assessments } from './pages/Assessments';
+import { AssessmentDetails } from './pages/AssessmentDetails';
+import { Navbar } from './components/layout/Navbar';
 
-/**
- * Main App component.
- * Renders the AIShield home page.
- */
-function App() {
-  return (
-    <div className="app">
-      <Home />
-    </div>
-  );
+export default function App() {
+  return <BrowserRouter><Navbar /><main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <Routes>
+      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/analyze" element={<Analyze />} />
+      <Route path="/assessments" element={<Assessments />} />
+      <Route path="/assessments/:id" element={<AssessmentDetails />} />
+      <Route path="*" element={<p>Page not found.</p>} />
+    </Routes>
+  </main></BrowserRouter>;
 }
-
-export default App;

@@ -8,15 +8,18 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.main import create_app
-from app.database.database import Base
+from app.database.database import Base, get_db
 from app.models.security import HybridSecurityAssessment, Decision, AttackType
 
 
 @pytest.fixture
-def client():
+def client(db_session):
     """Create a test client."""
     app = create_app()
-    return TestClient(app)
+    app.dependency_overrides[get_db] = lambda: db_session
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture

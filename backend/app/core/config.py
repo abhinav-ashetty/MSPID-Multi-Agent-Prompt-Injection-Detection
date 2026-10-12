@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     # API
     api_prefix: str = "/api/v1"
 
+    # Browser origin for the React app (comma separated for deployments).
+    frontend_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+
 
 # Global settings instance
 settings = Settings()

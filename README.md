@@ -1,195 +1,55 @@
-# AIShield
+﻿# AIShield
 
-A multi-agent AI security system demonstrating how a Defender Agent can detect, evaluate, and prevent attacks before they reach the Target Agent.
+AIShield is a prototype prompt-security assessment dashboard. The React app submits a prompt to a FastAPI backend. The backend combines phrase-based rules, a TF-IDF/logistic-regression classifier, and a Gemini assessment, assigns an experimental ALLOW/SANITIZE/BLOCK label, and stores the result in SQLite. The dashboard shows stored assessments and summary charts.
 
-## Architecture
+**This is a research prototype, not a production security control.** Its detector performed poorly on a small independent challenge set; do not automate access decisions with its output. See [detector validation](backend/DETECTOR_VALIDATION.md).
 
-```
-Attacker Agent
-      |
-      v
-Defender Agent
-      |
-      +---- BLOCK
-      |
-      +---- SANITIZE
-      |
-      +---- ALLOW
-               |
-               v
-          Target Agent
-               |
-               v
-       Output Leakage Detector
-               |
-               v
-             User
-```
+## Run locally
 
-## Tech Stack
+Requirements: Python 3.13+, Node.js 18+, and a Gemini API key for prompt analysis.
 
-**Backend:**
-- Python 3.13
-- FastAPI + Uvicorn
-- Pydantic + Pydantic Settings
-- pytest + pytest-asyncio
+Backend, from the repository root:
 
-**Frontend:**
-- React 18 + TypeScript
-- Vite
-- Tailwind CSS
-- Axios
-
-**Development:**
-- Git + GitHub
-- VS Code
-
----
-
-## Phase 1: Project Foundation (Complete)
-
-### Backend Structure
-```
-backend/
-├── app/
-│   ├── main.py              # FastAPI entry point
-│   ├── api/
-│   │   └── health.py        # GET /api/v1/health
-│   ├── core/
-│   │   └── config.py        # Pydantic Settings
-│   └── models/
-│       └── health.py        # HealthResponse model
-├── tests/
-│   └── test_health.py       # Health endpoint tests
-├── requirements.txt
-├── pytest.ini
-└── .env.example
-```
-
-### Frontend Structure
-```
-frontend/
-├── src/
-│   ├── components/
-│   │   └── HealthStatus.tsx # Backend connection indicator
-│   ├── pages/
-│   │   └── Home.tsx         # Main landing page
-│   ├── services/
-│   │   └── api.ts           # Axios + healthApi
-│   ├── types/
-│   │   └── health.ts        # HealthResponse interface
-│   ├── App.tsx
-│   ├── main.tsx
-│   └── index.css
-├── package.json
-├── vite.config.ts           # Proxy /api/* -> localhost:8000
-├── tailwind.config.js
-├── tsconfig.json
-└── .env.example
-```
-
----
-
-## Getting Started
-
-### Prerequisites
-- Python 3.13+
-- Node.js 18+ / npm 9+
-
-### Backend Setup
-```bash
+```powershell
 cd backend
-
-# Create virtual environment
 python -m venv .venv
-.venv\Scripts\activate   # Windows
-# source .venv/bin/activate  # Linux/Mac
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run tests
-pytest -v
-
-# Start server
-uvicorn app.main:app --reload
+.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
+# Edit backend/.env and set GEMINI_API_KEY.
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
-- API: http://localhost:8000
-- Health: http://localhost:8000/api/v1/health
-- Docs: http://localhost:8000/docs
 
-### Frontend Setup
-```bash
+The backend creates the SQLite tables at startup. API docs are at `http://localhost:8000/docs`; health is `http://localhost:8000/api/v1/health`.
+
+Frontend, in another terminal from the repository root:
+
+```powershell
 cd frontend
-
-# Install dependencies
 npm install
-
-# Start dev server
 npm run dev
 ```
-- App: http://localhost:5173
-- Proxies `/api/*` to `http://localhost:8000`
 
-### Run Both (Two Terminals)
-```bash
-# Terminal 1 - Backend
-cd backend && .venv\Scripts\activate && uvicorn app.main:app --reload
+Open `http://localhost:5173`. Vite proxies `/api` to the backend. For a separately hosted frontend, set `VITE_API_BASE_URL` and configure the backend's comma-separated `FRONTEND_ORIGINS` to include that origin.
 
-# Terminal 2 - Frontend
-cd frontend && npm run dev
+## Validate the detector
+
+From `backend/`:
+
+```powershell
+python evaluate_detector.py
+$env:DEBUG = 'true'
+python -m pytest tests/test_health.py tests/test_security_api.py tests/test_rule_detector.py tests/test_hybrid_engine.py tests/test_persistence.py tests/test_persistence_integration.py tests/test_ml_classifier.py -q
 ```
 
----
+The evaluation script prints the synthetic CSV holdout metrics and a separate hand-written challenge-set report for the offline ML and rule detectors. These are diagnostic checks only. The Gemini-dependent tests require valid credentials and network access.
 
-## Environment Variables
+## Main routes and endpoints
 
-### Backend (`backend/.env`)
-```bash
-cp backend/.env.example backend/.env
-```
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `APP_NAME` | Application name | AIShield |
-| `APP_VERSION` | Version string | 0.1.0 |
-| `DEBUG` | Debug mode | true |
-| `HOST` | Server host | 0.0.0.0 |
-| `PORT` | Server port | 8000 |
-| `API_PREFIX` | API route prefix | /api/v1 |
+Frontend: `/dashboard`, `/analyze`, `/assessments`, `/assessments/:id`.
 
-### Frontend (`frontend/.env`)
-```bash
-cp frontend/.env.example frontend/.env
-```
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `VITE_API_BASE_URL` | Backend base URL (prod) | http://localhost:8000 |
+Backend: `POST /api/v1/security/analyze`, `GET /api/v1/security/assessments`, `GET /api/v1/security/assessments/{id}`, plus statistics, attacks, risk-distribution, timeline, and health endpoints.
 
-> **Note:** In development, Vite proxy handles API calls. `VITE_API_BASE_URL` is used only in production builds.
+Assessment prompts are stored in plain text in `backend/app/data/aishield.db`; do not submit sensitive material. See [privacy notes](backend/app/database/PRIVACY.md).
 
----
-
-## API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | Welcome message |
-| GET | `/api/v1/health` | Health check → `{"status": "ok"}` |
-
----
-
-## Project Status
-
-- [x] **Phase 1**: Project foundation (backend + frontend + health check)
-- [ ] **Phase 2**: Agent development (Attacker, Defender, Target with AutoGen)
-- [ ] **Phase 3**: ML security (TF-IDF + Logistic Regression)
-- [ ] **Phase 4**: Defense logic (ALLOW/SANITIZE/BLOCK)
-- [ ] **Phase 5**: Dashboard (Recharts visualization)
-- [ ] **Phase 6**: Database (SQLite logging)
-- [ ] **Phase 7**: Testing & documentation
-
----
-
-## License
-
-MIT License - see [LICENSE](LICENSE)
+\n

@@ -48,11 +48,10 @@ async def test_gemini_connection() -> bool:
 
     print(f"Testing Gemini connection...")
     print(f"Model: {model}")
-    print(f"API Key: {api_key[:8]}...{api_key[-4:] if len(api_key) > 12 else '***'}")
+    print("API key: configured (value hidden)")
     print("-" * 50)
 
-    # Provide explicit model_info since gemini-3.6-flash is not in AutoGen's known models list.
-    # Values based on Gemini 2.5 Flash capabilities (latest known flash variant).
+    # Provide explicit model_info because AutoGen's model catalog may lag the selected Gemini model.
     model_info = {
         "vision": True,
         "function_calling": True,

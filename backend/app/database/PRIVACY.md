@@ -1,4 +1,4 @@
-# Privacy Considerations for AIShield Defender Persistence Layer
+﻿# Privacy Considerations for AIShield Defender Persistence Layer
 
 ## Prompt Storage and Sensitivity
 
@@ -43,7 +43,7 @@ For production deployments, consider the following privacy protections:
 
 This prototype implementation uses local SQLite with the following characteristics:
 
-- **Storage Location**: `backend/data/aishield.db` (relative to application root)
+- **Storage Location**: `backend/app/data/aishield.db` (relative to application root)
 - **Access**: File-based access to SQLite database
 - **Encryption**: None (plain text SQLite file)
 - **Access Controls**: Dependent on file system permissions
@@ -79,3 +79,5 @@ Organizations using this persistence layer should consider applicable regulation
 THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 Organizations are responsible for ensuring their use of this software complies with all applicable laws, regulations, and organizational policies regarding data protection and privacy.
+
+\n

@@ -5,13 +5,14 @@ and Gemini assessment to produce a final security decision.
 """
 
 import logging
-import os
 from typing import Optional, List, Dict, Any
 import asyncio
 import math
+from functools import lru_cache
+from pathlib import Path
 
 from app.agents.defender.rule_detector import RuleBasedDetector
-from app.agents.defender.ml_classifier import PromptSecurityClassifier
+from app.agents.defender.ml_classifier import PromptSecurityClassifier, load_dataset
 from app.agents.defender.defender_agent import DefenderAgent, SecurityAssessment
 from app.models.security import (
     HybridSecurityAssessment,
@@ -20,6 +21,28 @@ from app.models.security import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=1)
+def _load_default_classifier() -> PromptSecurityClassifier:
+    """Load a trained model or fit the bundled prototype data once per process."""
+    classifier = PromptSecurityClassifier()
+    model_path = Path(__file__).resolve().parents[3] / "models" / "prompt_security_classifier.joblib"
+    if model_path.exists():
+        classifier.load(str(model_path))
+        logger.info("Loaded pre-trained prompt classifier from %s", model_path)
+        return classifier
+
+    dataset_path = Path(__file__).resolve().parents[3] / "data" / "security_prompts.csv"
+    if not dataset_path.exists():
+        raise FileNotFoundError(f"Prompt classifier model and training data are missing: {dataset_path}")
+    texts, labels = load_dataset(str(dataset_path))
+    classifier.train(texts, labels)
+    logger.warning(
+        "No trained model artifact found; using an in-memory model fit to the small synthetic dataset. "
+        "Detector outputs are experimental and must not be used as a security control."
+    )
+    return classifier
 
 
 class HybridRiskEngine:
@@ -78,17 +101,7 @@ class HybridRiskEngine:
         if ml_classifier is not None:
             self.ml_classifier = ml_classifier
         else:
-            self.ml_classifier = PromptSecurityClassifier()
-            # Try to load pre-trained model
-            model_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "models", "prompt_security_classifier.joblib")
-            if os.path.exists(model_path):
-                try:
-                    self.ml_classifier.load(model_path)
-                    logger.info(f"Loaded pre-trained ML model from {model_path}")
-                except Exception as e:
-                    logger.warning(f"Failed to load pre-trained model: {e}. Using untrained classifier.")
-            else:
-                logger.warning(f"Pre-trained model not found at {model_path}. Using untrained classifier.")
+            self.ml_classifier = _load_default_classifier()
 
         self.defender_agent = defender_agent or DefenderAgent()
 

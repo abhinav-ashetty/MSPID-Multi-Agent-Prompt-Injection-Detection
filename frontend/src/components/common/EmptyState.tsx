@@ -1,0 +1,2 @@
+﻿interface Props { title: string; description: string; actionText?: string; onAction?: () => void; }
+export function EmptyState({ title, description, actionText, onAction }: Props) { return <section className="rounded-xl border bg-white p-6 text-center"><h2 className="font-semibold">{title}</h2><p className="mt-2 text-gray-600">{description}</p>{actionText && onAction && <button onClick={onAction} className="mt-4 rounded bg-blue-600 px-4 py-2 text-white">{actionText}</button>}</section>; }

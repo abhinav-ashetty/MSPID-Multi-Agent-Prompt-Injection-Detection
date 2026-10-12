@@ -153,6 +153,7 @@ dist/
 
 # Environments
 .env
+.env.example
 .envrc
 .venv
 env/

@@ -126,7 +126,7 @@ class SecurityAssessmentRepository:
             SecurityAssessmentDB.id == assessment_id
         ).first()
     
-    def get_recent_assessments(self, limit: int = 100) -> List[SecurityAssessmentDB]:
+    def get_recent_assessments(self, limit: int = 100, offset: int = 0) -> List[SecurityAssessmentDB]:
         """Retrieve recent assessments ordered by timestamp (newest first).
         
         Args:
@@ -137,6 +137,7 @@ class SecurityAssessmentRepository:
         """
         return self.db.query(SecurityAssessmentDB)\
             .order_by(desc(SecurityAssessmentDB.timestamp))\
+            .offset(offset)\
             .limit(limit)\
             .all()
     

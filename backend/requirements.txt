@@ -1,37 +1,19 @@
-# AIShield Backend Dependencies
-# Core Framework
+﻿# AIShield backend runtime and evaluation dependencies
 fastapi==0.115.0
 uvicorn[standard]==0.32.0
-
-# Data Validation & Settings
 pydantic==2.9.2
 pydantic-settings==2.5.2
-
-# Environment Management
 python-dotenv==1.0.1
-
-# HTTP Client (for testing)
+sqlalchemy==2.0.36
+pandas==2.3.3
+scikit-learn==1.7.2
+joblib==1.4.2
 httpx==0.28.1
-
-# Testing
 pytest==8.3.4
 pytest-asyncio==0.24.0
-
-# AI Agents (AutoGen)
 autogen-agentchat==0.7.5
 autogen-ext==0.7.5
-
-# AutoGen dependencies
 openai==2.53.0
 tiktoken==0.13.0
-
-# Google Gemini
 google-generativeai==0.8.5
 
-# Machine Learning
-scikit-learn==1.5.1
-joblib==1.4.2
-
-# Type Checking (optional, for development)
-# mypy==1.13.0
-# ruff==0.7.3sqlalchemy==2.0.36

@@ -1,4 +1,4 @@
-"""Security analysis and analytics API endpoints."""
+﻿"""Security analysis and analytics API endpoints."""
 
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query, Depends
@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, case
 from pydantic import BaseModel
 from datetime import datetime
+import logging
 
 from app.database.database import get_db
 from app.database.repository import SecurityAssessmentRepository
@@ -13,6 +14,7 @@ from app.models.security import HybridSecurityAssessment, Decision, AttackType
 from app.agents.defender.hybrid_engine import analyze_prompt_hybrid
 
 router = APIRouter(prefix="/security", tags=["security"])
+logger = logging.getLogger(__name__)
 
 
 # Request Models
@@ -146,7 +148,19 @@ async def analyze_prompt(
         )
     
     # Analyze using the existing hybrid engine
-    assessment = await analyze_prompt_hybrid(prompt)
+    try:
+        assessment = await analyze_prompt_hybrid(prompt)
+    except ValueError as exc:
+        if "GEMINI_API_KEY" in str(exc):
+            raise HTTPException(
+                status_code=503,
+                detail="Prompt analysis is unavailable: configure GEMINI_API_KEY on the backend.",
+            ) from exc
+        logger.exception("Prompt analysis configuration failed")
+        raise HTTPException(status_code=503, detail="Prompt analysis is not configured correctly.") from exc
+    except Exception as exc:
+        logger.exception("Prompt analysis failed")
+        raise HTTPException(status_code=502, detail="The security analysis provider failed. Please retry.") from exc
     
     # Persist the assessment
     assessment_id = repo.save_assessment(assessment, prompt)
@@ -217,12 +231,12 @@ async def get_assessments(
     
     Results are ordered by newest assessment first.
     """
-    assessments = repo.get_recent_assessments(limit=limit)
+    assessments = repo.get_recent_assessments(limit=limit, offset=offset)
     
     # Apply offset manually since get_recent_assessments doesn't support it
     # In a production system, we'd modify the repository to support offset
     total = repo.count_assessments()
-    paginated_assessments = assessments[offset:offset + limit]
+    paginated_assessments = assessments
     
     items = [
         AssessmentItem(

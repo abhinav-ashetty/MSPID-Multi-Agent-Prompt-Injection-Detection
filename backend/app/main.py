@@ -2,6 +2,7 @@
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api import health
 from app.api import security
@@ -11,6 +12,8 @@ from app.api import security
 async def lifespan(app: FastAPI):
     """Application lifespan handler for startup/shutdown events."""
     # Startup
+    from app.database.database import create_tables
+    create_tables()
     print(f"Starting {settings.app_name} v{settings.app_version}")
     yield
     # Shutdown
@@ -26,6 +29,14 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
         docs_url="/docs",
         redoc_url="/redoc",
+    )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[origin.strip() for origin in settings.frontend_origins.split(",") if origin.strip()],
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type"],
     )
 
     # Include API routers
