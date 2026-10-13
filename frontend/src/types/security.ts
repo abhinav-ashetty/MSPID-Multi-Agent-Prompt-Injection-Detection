@@ -19,6 +19,7 @@ export type AttackType = 'NONE' | 'PROMPT_INJECTION' | 'OTHER';
  */
 export interface SecurityAnalysisRequest {
   prompt: string;
+  use_gemini?: boolean;
 }
 
 /**
@@ -33,6 +34,7 @@ export interface SecurityAnalysisResponse {
   rule_score: number; // 0-100
   ml_probability: number; // 0.0-1.0
   gemini_risk_score: number; // 0-100
+  gemini_used: boolean;
   attack_type: AttackType;
   confidence: number; // 0.0-1.0
   reason: string;

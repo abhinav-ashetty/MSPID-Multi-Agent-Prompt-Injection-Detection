@@ -1,6 +1,6 @@
 """Database setup and session management for AIShield Defender persistence."""
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from sqlalchemy.pool import StaticPool
 from typing import Generator
@@ -74,7 +74,16 @@ def create_tables() -> None:
     It imports the repository module to ensure all models are registered
     with the Base metadata before creating tables.
     """
-    # Import repository to ensure SecurityAssessmentDB model is registered
-    # with the Base metadata before creating tables
+    # Import repositories to register their models with Base metadata.
     from app.database import repository  # noqa: F401
+    from app.database import simulation_repository  # noqa: F401
     Base.metadata.create_all(bind=engine)
+    columns = {column["name"] for column in inspect(engine).get_columns("security_assessments")}
+    if "gemini_used" not in columns:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE security_assessments "
+                    "ADD COLUMN gemini_used BOOLEAN NOT NULL DEFAULT 1"
+                )
+            )

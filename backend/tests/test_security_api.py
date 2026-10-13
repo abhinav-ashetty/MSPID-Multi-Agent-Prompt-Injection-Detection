@@ -82,7 +82,85 @@ def test_analyze_prompt_valid(client, mock_hybrid_assessment):
         assert data["reason"] == "This is a safe prompt"
         
         # Verify the hybrid engine was called
-        mock_analyze.assert_called_once_with("Hello, how are you?")
+        mock_analyze.assert_called_once_with("Hello, how are you?", use_gemini=True)
+
+
+def test_analyze_prompt_can_disable_gemini(client, mock_hybrid_assessment):
+    local_assessment = mock_hybrid_assessment.model_copy(
+        update={"gemini_used": False, "gemini_risk_score": 0}
+    )
+    with patch(
+        'app.api.security.analyze_prompt_hybrid',
+        return_value=local_assessment,
+    ) as mock_analyze:
+        response = client.post(
+            "/api/v1/security/analyze",
+            json={"prompt": "Hello, how are you?", "use_gemini": False},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["gemini_used"] is False
+    assert response.json()["gemini_risk_score"] == 0
+    mock_analyze.assert_called_once_with("Hello, how are you?", use_gemini=False)
+
+
+def test_analyze_prompt_reports_provider_503_as_temporary_unavailability(client):
+    class ProviderUnavailable(Exception):
+        status_code = 503
+
+    with patch(
+        'app.api.security.analyze_prompt_hybrid',
+        side_effect=ProviderUnavailable("provider overloaded"),
+    ):
+        response = client.post(
+            "/api/v1/security/analyze",
+            json={"prompt": "Test prompt"},
+        )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == (
+        "The security analysis provider is temporarily unavailable. Please retry shortly."
+    )
+
+
+def test_analyze_prompt_reports_invalid_gemini_credentials(client):
+    class ProviderAuthenticationError(Exception):
+        status_code = 401
+
+    with patch(
+        'app.api.security.analyze_prompt_hybrid',
+        side_effect=ProviderAuthenticationError("invalid credentials"),
+    ):
+        response = client.post(
+            "/api/v1/security/analyze",
+            json={"prompt": "Test prompt"},
+        )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == (
+        "Gemini rejected the configured credentials. Set GEMINI_API_KEY to a valid "
+        "Gemini API key from Google AI Studio, then restart the backend."
+    )
+
+
+def test_analyze_prompt_reports_provider_429_as_quota_exhaustion(client):
+    class ProviderRateLimited(Exception):
+        status_code = 429
+
+    with patch(
+        'app.api.security.analyze_prompt_hybrid',
+        side_effect=ProviderRateLimited("quota exceeded"),
+    ):
+        response = client.post(
+            "/api/v1/security/analyze",
+            json={"prompt": "Test prompt"},
+        )
+
+    assert response.status_code == 429
+    assert response.json()["detail"] == (
+        "The Gemini API quota or rate limit has been exceeded. "
+        "Please wait before retrying or check your Gemini API quota and billing."
+    )
 
 
 def test_analyze_prompt_empty(client):

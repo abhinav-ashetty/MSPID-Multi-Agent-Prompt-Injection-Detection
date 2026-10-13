@@ -8,6 +8,8 @@ OpenAIChatCompletionClient, reusing the working configuration from test_gemini.p
 """
 
 import os
+import asyncio
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -17,6 +19,8 @@ from autogen_ext.models.openai import OpenAIChatCompletionClient
 from pydantic import BaseModel
 
 from app.models.security import SecurityAssessment, Decision, AttackType
+
+logger = logging.getLogger(__name__)
 
 
 # Load environment variables["DESCRIPTION
@@ -64,7 +68,7 @@ def create_gemini_model_client(model: Optional[str] = None) -> OpenAIChatComplet
         Configured OpenAIChatCompletionClient for Gemini.
     """
     api_key = os.getenv("GEMINI_API_KEY")
-    model_name = model or os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+    model_name = model or os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
     if not api_key:
         raise ValueError(
@@ -128,7 +132,23 @@ class DefenderAgent:
             SecurityAssessment with the analysis results.
         """
         # The prompt is passed as user message content - treated as DATA, not instructions
-        result = await self.agent.run(task=prompt)
+        # Gemini can return 503 during temporary capacity spikes. Retry only
+        # that transient status, with bounded delays; other errors still fail
+        # immediately and are handled by the API's safe error response.
+        for attempt in range(3):
+            try:
+                result = await self.agent.run(task=prompt)
+                break
+            except Exception as exc:
+                if getattr(exc, "status_code", None) != 503 or attempt == 2:
+                    raise
+                delay = 2 ** attempt
+                logger.warning(
+                    "Defender provider returned HTTP 503; retrying attempt %s/2 in %s seconds",
+                    attempt + 1,
+                    delay,
+                )
+                await asyncio.sleep(delay)
         # The structured output is in the last message
         return result.messages[-1].content
 

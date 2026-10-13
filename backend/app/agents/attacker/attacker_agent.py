@@ -14,7 +14,6 @@ from autogen_core.models import ModelFamily
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 from pydantic import BaseModel
 
-
 class AttackCategory(str, Enum):
     """Allowed attack-test categories for the Attacker Agent."""
 

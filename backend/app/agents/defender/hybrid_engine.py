@@ -77,6 +77,7 @@ class HybridRiskEngine:
         gemini_weight: float = DEFAULT_GEMINI_WEIGHT,
         allow_threshold: int = DEFAULT_ALLOW_THRESHOLD,
         sanitize_threshold: int = DEFAULT_SANITIZE_THRESHOLD,
+        use_gemini: bool = True,
     ):
         """Initialize the hybrid risk engine.
 
@@ -89,6 +90,7 @@ class HybridRiskEngine:
             gemini_weight: Weight for Gemini risk score (0-1). Default 0.4.
             allow_threshold: Upper bound (inclusive) for ALLOW decision. Default 39.
             sanitize_threshold: Upper bound (inclusive) for SANITIZE decision. Default 69.
+            use_gemini: Whether to include Gemini in the assessment. Defaults to True.
 
         Note:
             Weights must sum to 1.0. The constructor will normalize if they don't.
@@ -103,12 +105,15 @@ class HybridRiskEngine:
         else:
             self.ml_classifier = _load_default_classifier()
 
-        self.defender_agent = defender_agent or DefenderAgent()
+        self.use_gemini = use_gemini
+        self.defender_agent = (defender_agent or DefenderAgent()) if use_gemini else None
 
         # Validate and set weights
         total_weight = rule_weight + ml_weight + gemini_weight
         if total_weight <= 0:
             raise ValueError("Sum of weights must be positive")
+        if not use_gemini and rule_weight + ml_weight <= 0:
+            raise ValueError("Rule and ML weights must sum to a positive value when Gemini is disabled")
         self.rule_weight = rule_weight / total_weight
         self.ml_weight = ml_weight / total_weight
         self.gemini_weight = gemini_weight / total_weight
@@ -164,15 +169,10 @@ class HybridRiskEngine:
         else:
             return Decision.BLOCK
 
-    def _compute_confidence(
-        self, rule_norm: float, ml_norm: float, gemini_norm: float
-    ) -> float:
+    def _compute_confidence(self, *scores: float) -> float:
         """Compute confidence as 1 - variance of the three normalized scores."""
-        # If all three scores agree, variance is low -> high confidence
-        # If they disagree, variance is high -> low confidence
-        scores = [rule_norm, ml_norm, gemini_norm]
         mean = sum(scores) / len(scores)
-        variance = sum((x - mean) ** 2 for x in scores) / len(scores)
+        variance = sum((score - mean) ** 2 for score in scores) / len(scores)
         # Variance ranges from 0 to ~0.11 (when scores are 0,0,1)
         # We want confidence in [0,1], so we can use: confidence = 1 - (variance / max_variance)
         # Max variance for three numbers in [0,1] is when two are 0 and one is 1 (or vice versa):
@@ -208,33 +208,48 @@ class HybridRiskEngine:
         ml_prob_benign = ml_probas[0]
         ml_probability = ml_probas[1]  # Probability of class 1 (MALICIOUS)
 
-        # Run Gemini assessment (asynchronous)
-        gemini_assessment: SecurityAssessment = await self.defender_agent.analyze(prompt)
-        gemini_risk_score = gemini_assessment.risk_score
-
         # Normalize scores to [0,1] range for weighting
         rule_norm = self._normalize_rule_score(rule_score)
         ml_norm = self._normalize_ml_probability(ml_probability)
-        gemini_norm = self._normalize_gemini_score(gemini_risk_score)
-
-        # Compute final score (0-100)
-        final_score = self._compute_weighted_score(rule_norm, ml_norm, gemini_norm)
+        if self.use_gemini:
+            if self.defender_agent is None:
+                raise RuntimeError("Gemini is enabled but no DefenderAgent is configured")
+            gemini_assessment: SecurityAssessment | None = await self.defender_agent.analyze(prompt)
+            gemini_risk_score = gemini_assessment.risk_score
+            gemini_norm = self._normalize_gemini_score(gemini_risk_score)
+            final_score = self._compute_weighted_score(rule_norm, ml_norm, gemini_norm)
+            confidence = self._compute_confidence(rule_norm, ml_norm, gemini_norm)
+            attack_type = gemini_assessment.attack_type
+            gemini_details = gemini_assessment.reason
+            reason = (
+                f"Hybrid assessment: rule_score={rule_score}, "
+                f"ml_probability={ml_probability:.2f}, gemini_risk_score={gemini_risk_score}. "
+                f"Final score: {final_score:.1f}."
+            )
+        else:
+            # Re-normalize the rule and ML components to use the full score.
+            local_weight = self.rule_weight + self.ml_weight
+            final_score = (
+                (self.rule_weight * rule_norm + self.ml_weight * ml_norm)
+                / local_weight
+            ) * 100
+            gemini_risk_score = 0
+            confidence = self._compute_confidence(rule_norm, ml_norm)
+            attack_type = (
+                AttackType.PROMPT_INJECTION
+                if rule_result.is_suspicious or ml_prediction == 1
+                else AttackType.NONE
+            )
+            gemini_details = "Gemini was not used; this assessment uses only local rule and ML detectors."
+            reason = (
+                f"Local assessment (Gemini disabled): rule_score={rule_score}, "
+                f"ml_probability={ml_probability:.2f}. Final score: {final_score:.1f}."
+            )
 
         # Make decision
         decision = self._make_decision(final_score)
 
-        # Compute confidence
-        confidence = self._compute_confidence(rule_norm, ml_norm, gemini_norm)
-
-        # Determine attack type: use the Gemini assessment's attack type
-        attack_type = gemini_assessment.attack_type
-
-        # Build reason string
-        reason = (
-            f"Hybrid assessment: rule_score={rule_score}, "
-            f"ml_probability={ml_probability:.2f}, gemini_risk_score={gemini_risk_score}. "
-            f"Final score: {final_score:.1f} ({decision.value})."
-        )
+        reason += f" ({decision.value})."
 
         # Optional details
         rule_details = {
@@ -247,14 +262,13 @@ class HybridRiskEngine:
             "probability_benign": float(ml_prob_benign),
             "probability_malicious": ml_probability,
         }
-        gemini_details = gemini_assessment.reason
-
         return HybridSecurityAssessment(
             decision=decision,
             final_risk_score=round(final_score),
             rule_score=rule_score,
             ml_probability=ml_probability,
             gemini_risk_score=gemini_risk_score,
+            gemini_used=self.use_gemini,
             attack_type=attack_type,
             confidence=confidence,
             reason=reason,
@@ -278,7 +292,7 @@ class HybridRiskEngine:
 
 
 # Convenience function for quick use
-async def analyze_prompt_hybrid(prompt: str) -> HybridSecurityAssessment:
+async def analyze_prompt_hybrid(prompt: str, use_gemini: bool = True) -> HybridSecurityAssessment:
     """Analyze a single prompt using the hybrid engine and return the assessment.
 
     This is a convenience function that creates, uses, and closes a HybridRiskEngine.
@@ -289,7 +303,7 @@ async def analyze_prompt_hybrid(prompt: str) -> HybridSecurityAssessment:
     Returns:
         HybridSecurityAssessment result.
     """
-    async with HybridRiskEngine() as engine:
+    async with HybridRiskEngine(use_gemini=use_gemini) as engine:
         return await engine.analyze(prompt)
 
 

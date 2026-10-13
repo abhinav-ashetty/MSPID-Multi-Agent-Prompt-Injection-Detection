@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api import health
 from app.api import security
+from app.api import simulation
 
 
 @asynccontextmanager
@@ -47,6 +48,11 @@ def create_app() -> FastAPI:
     
     app.include_router(
         security.router,
+        prefix=settings.api_prefix,
+    )
+
+    app.include_router(
+        simulation.router,
         prefix=settings.api_prefix,
     )
 

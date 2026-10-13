@@ -3,6 +3,8 @@ import { Dashboard } from './pages/Dashboard';
 import { Analyze } from './pages/Analyze';
 import { Assessments } from './pages/Assessments';
 import { AssessmentDetails } from './pages/AssessmentDetails';
+import { Simulation } from './pages/Simulation';
+import { SimulationDetails } from './pages/SimulationDetails';
 import { Navbar } from './components/layout/Navbar';
 
 export default function App() {
@@ -13,6 +15,8 @@ export default function App() {
       <Route path="/analyze" element={<Analyze />} />
       <Route path="/assessments" element={<Assessments />} />
       <Route path="/assessments/:id" element={<AssessmentDetails />} />
+      <Route path="/simulations" element={<Simulation />} />
+      <Route path="/simulations/:simulationId" element={<SimulationDetails />} />
       <Route path="*" element={<p>Page not found.</p>} />
     </Routes>
   </main></BrowserRouter>;

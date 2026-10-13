@@ -39,7 +39,7 @@ async def test_gemini_connection() -> bool:
 
     # Get configuration from environment
     api_key = os.getenv("GEMINI_API_KEY")
-    model = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+    model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
     if not api_key:
         print("ERROR: GEMINI_API_KEY not set in environment")

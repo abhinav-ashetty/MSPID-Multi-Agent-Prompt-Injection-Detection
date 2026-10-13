@@ -8,6 +8,12 @@ import type {
   RiskDistributionItem,
   TimelineItem
 } from '../types/security';
+import type {
+  SimulationHistoryResponse,
+  SimulationRequest,
+  SimulationRunRecord,
+  SimulationStatistics,
+} from '../types/simulation';
 
 /**
  * Axios instance configured with relative base URL.
@@ -109,6 +115,31 @@ export const securityApi = {
     const response = await api.get<TimelineItem[]>('/api/v1/security/timeline', {
       params: { period }
     });
+    return response.data;
+  },
+};
+
+/** Simulation API calls for the Attacker → Defender → Target workflow. */
+export const simulationApi = {
+  run: async (request: SimulationRequest): Promise<SimulationRunRecord> => {
+    const response = await api.post<SimulationRunRecord>('/api/v1/simulations/run', request);
+    return response.data;
+  },
+
+  get: async (simulationId: string): Promise<SimulationRunRecord> => {
+    const response = await api.get<SimulationRunRecord>(`/api/v1/simulations/${encodeURIComponent(simulationId)}`);
+    return response.data;
+  },
+
+  list: async (limit: number = 20, offset: number = 0): Promise<SimulationHistoryResponse> => {
+    const response = await api.get<SimulationHistoryResponse>('/api/v1/simulations', {
+      params: { limit, offset },
+    });
+    return response.data;
+  },
+
+  statistics: async (): Promise<SimulationStatistics> => {
+    const response = await api.get<SimulationStatistics>('/api/v1/simulations/statistics');
     return response.data;
   },
 };

@@ -11,7 +11,7 @@ from app.models.security import (
     Decision,
     AttackType,
 )
-from sqlalchemy import Column, Integer, String, Text, Float, DateTime
+from sqlalchemy import Column, Integer, String, Text, Float, DateTime, Boolean
 
 
 class SecurityAssessmentDB(Base):
@@ -29,6 +29,7 @@ class SecurityAssessmentDB(Base):
     rule_score = Column(Integer, nullable=False)
     ml_probability = Column(Float, nullable=False)
     gemini_risk_score = Column(Integer, nullable=False)
+    gemini_used = Column(Boolean, nullable=False, default=True, server_default="1")
     attack_type = Column(String(20), nullable=False)  # NONE, PROMPT_INJECTION, OTHER
     confidence = Column(Float, nullable=False)
     reason = Column(Text, nullable=False)
@@ -91,6 +92,7 @@ class SecurityAssessmentRepository:
             rule_score=assessment.rule_score,
             ml_probability=assessment.ml_probability,
             gemini_risk_score=assessment.gemini_risk_score,
+            gemini_used=assessment.gemini_used,
             attack_type=assessment.attack_type.value,
             confidence=assessment.confidence,
             reason=assessment.reason,

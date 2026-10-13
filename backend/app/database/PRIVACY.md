@@ -2,7 +2,7 @@
 
 ## Prompt Storage and Sensitivity
 
-The AIShield Defender persistence layer stores the original prompts that are submitted for security analysis. These prompts may contain sensitive information, including but not limited to:
+The AIShield persistence layer stores original assessment prompts and generated simulation prompts. Simulation results can also store the Target response and matched protected-canary values. These values may contain sensitive information, including but not limited to:
 
 - Personally identifiable information (PII)
 - Proprietary business information
@@ -53,9 +53,12 @@ This prototype implementation uses local SQLite with the following characteristi
 
 The persistence layer stores the following fields from each security assessment:
 
-1. **Original Prompt**: The exact text submitted for analysis (potentially sensitive)
-2. **Assessment Results**: Decision, scores, confidence, and reasoning
-3. **Metadata**: Timestamp and optional detector details
+1. **Assessment Prompt**: The exact text submitted for analysis (potentially sensitive)
+2. **Simulation Prompt and Output**: Generated attack prompt, Target response, Defender decision, canary matches, success/outcome, and errors
+3. **Assessment Results**: Decision, scores, confidence, and reasoning
+4. **Metadata**: Timestamps and optional detector details
+
+Simulation history/detail routes and assessment history/detail routes currently have no authentication or authorization. Keep the prototype local and do not expose these endpoints or the SQLite file to untrusted users.
 
 ## Compliance Considerations
 

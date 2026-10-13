@@ -112,6 +112,10 @@ class HybridSecurityAssessment(BaseModel):
         le=100,
         description="Gemini DefenderAgent risk score (0-100)",
     )
+    gemini_used: bool = Field(
+        default=True,
+        description="Whether Gemini was used in this assessment",
+    )
     attack_type: AttackType = Field(
         ...,
         description="Type of attack detected (from Gemini assessment)",

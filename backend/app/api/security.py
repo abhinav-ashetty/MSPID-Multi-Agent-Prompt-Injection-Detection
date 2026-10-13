@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 class SecurityAnalysisRequest(BaseModel):
     """Request model for security analysis."""
     prompt: str
+    use_gemini: bool = True
 
     model_config = {
         "json_schema_extra": {
@@ -44,6 +45,7 @@ class SecurityAnalysisResponse(BaseModel):
     rule_score: int
     ml_probability: float
     gemini_risk_score: int
+    gemini_used: bool
     attack_type: AttackType
     confidence: float
     reason: str
@@ -149,7 +151,7 @@ async def analyze_prompt(
     
     # Analyze using the existing hybrid engine
     try:
-        assessment = await analyze_prompt_hybrid(prompt)
+        assessment = await analyze_prompt_hybrid(prompt, use_gemini=request.use_gemini)
     except ValueError as exc:
         if "GEMINI_API_KEY" in str(exc):
             raise HTTPException(
@@ -159,6 +161,30 @@ async def analyze_prompt(
         logger.exception("Prompt analysis configuration failed")
         raise HTTPException(status_code=503, detail="Prompt analysis is not configured correctly.") from exc
     except Exception as exc:
+        if getattr(exc, "status_code", None) == 401:
+            logger.error("Gemini rejected the configured API credentials (HTTP 401)")
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Gemini rejected the configured credentials. Set GEMINI_API_KEY to a valid "
+                    "Gemini API key from Google AI Studio, then restart the backend."
+                ),
+            ) from exc
+        if getattr(exc, "status_code", None) == 503:
+            logger.warning("Prompt analysis provider remains unavailable after retries (HTTP 503)")
+            raise HTTPException(
+                status_code=503,
+                detail="The security analysis provider is temporarily unavailable. Please retry shortly.",
+            ) from exc
+        if getattr(exc, "status_code", None) == 429:
+            logger.warning("Prompt analysis provider quota or rate limit exceeded (HTTP 429)")
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    "The Gemini API quota or rate limit has been exceeded. "
+                    "Please wait before retrying or check your Gemini API quota and billing."
+                ),
+            ) from exc
         logger.exception("Prompt analysis failed")
         raise HTTPException(status_code=502, detail="The security analysis provider failed. Please retry.") from exc
     
@@ -183,6 +209,7 @@ async def analyze_prompt(
         rule_score=saved_assessment.rule_score,
         ml_probability=saved_assessment.ml_probability,
         gemini_risk_score=saved_assessment.gemini_risk_score,
+        gemini_used=saved_assessment.gemini_used,
         attack_type=AttackType(saved_assessment.attack_type),
         confidence=saved_assessment.confidence,
         reason=saved_assessment.reason
@@ -214,6 +241,7 @@ async def get_assessment(
         rule_score=assessment.rule_score,
         ml_probability=assessment.ml_probability,
         gemini_risk_score=assessment.gemini_risk_score,
+        gemini_used=assessment.gemini_used,
         attack_type=AttackType(assessment.attack_type),
         confidence=assessment.confidence,
         reason=assessment.reason
