@@ -1,6 +1,7 @@
 """Tests for the AIShield Defender Agent foundation."""
 
 import pytest
+from unittest.mock import patch
 from app.agents.defender.defender_agent import (
     DefenderAgent,
     create_defender_agent,
@@ -12,6 +13,16 @@ from app.models.security import SecurityAssessment, Decision, AttackType
 
 class TestDefenderAgentInitialization:
     """Tests for DefenderAgent initialization."""
+
+    def test_create_gemini_model_client_uses_supported_default_model(self, monkeypatch):
+        monkeypatch.setenv("GEMINI_API_KEY", "test-api-key")
+        monkeypatch.delenv("GEMINI_MODEL", raising=False)
+
+        with patch("app.agents.defender.defender_agent.OpenAIChatCompletionClient") as client:
+            create_gemini_model_client()
+
+        assert client.call_args.kwargs["model"] == "gemini-3.8-flash"
+        assert client.call_args.kwargs["api_key"] == "test-api-key"
 
     def test_create_gemini_model_client(self):
         """Test that Gemini model client can be created from environment."""

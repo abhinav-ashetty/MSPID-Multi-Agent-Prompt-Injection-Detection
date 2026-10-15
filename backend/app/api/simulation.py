@@ -63,6 +63,10 @@ class SimulationStatistics(BaseModel):
     outcomes: dict[str, int]
 
 
+class _GeminiUnavailableError(RuntimeError):
+    status_code = 503
+
+
 def get_repository(db: Session = Depends(get_db)) -> SimulationRepository:
     return SimulationRepository(db)
 
@@ -96,7 +100,7 @@ class _UnavailableAttacker:
     """Fail safely through the normal simulation-result path."""
 
     async def generate(self, attack_category):
-        raise RuntimeError("Attacker model is not configured")
+        raise _GeminiUnavailableError("Attacker model is not configured")
 
 
 def _history_item(row: SimulationRunDB) -> SimulationHistoryItem:
@@ -137,6 +141,15 @@ async def run_simulation(
             detail="Simulation could not be completed or saved.",
         ) from exc
     return SimulationRunRecord(id=row.id, created_at=row.created_at, result=result)
+
+
+@router.get("/run")
+async def run_simulation_requires_post() -> None:
+    raise HTTPException(
+        status_code=405,
+        detail="Simulation runs require POST /api/v1/simulations/run with a JSON request body.",
+        headers={"Allow": "POST"},
+    )
 
 
 @router.get("/statistics", response_model=SimulationStatistics)

@@ -1,3 +1,6 @@
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
 import pytest
 
 from app.agents.attacker.attacker_agent import (
@@ -6,6 +9,41 @@ from app.agents.attacker.attacker_agent import (
     AttackTestCase,
     AttackerAgent,
 )
+
+
+class ProviderUnavailable(Exception):
+    status_code = 503
+
+
+def test_local_fallback_creates_a_category_matched_attack() -> None:
+    result = AttackerAgent.create_local_fallback(AttackCategory.PROMPT_INJECTION)
+
+    assert result.category == AttackCategory.PROMPT_INJECTION
+    assert result.severity == AttackSeverity.HIGH
+    assert result.prompt.strip()
+    assert "local fallback" in result.description.lower()
+
+
+@pytest.mark.asyncio
+async def test_generate_retries_provider_503(monkeypatch) -> None:
+    agent = AttackerAgent.__new__(AttackerAgent)
+    agent.agent = SimpleNamespace(
+        run=AsyncMock(
+            side_effect=[
+                ProviderUnavailable(),
+                ProviderUnavailable(),
+                SimpleNamespace(messages=[SimpleNamespace(content="Generated test prompt")]),
+            ]
+        )
+    )
+    sleep = AsyncMock()
+    monkeypatch.setattr("app.agents.attacker.attacker_agent.asyncio.sleep", sleep)
+
+    result = await agent.generate(AttackCategory.PROMPT_INJECTION)
+
+    assert result.prompt == "Generated test prompt"
+    assert agent.agent.run.await_count == 3
+    assert [call.args[0] for call in sleep.await_args_list] == [1, 2]
 
 
 @pytest.mark.asyncio

@@ -77,6 +77,8 @@ class SimulationResponse(BaseModel):
 
     simulation_id: str
     outcome: SimulationOutcome
+    ai_mode: Literal["GEMINI", "LOCAL_FALLBACK"] = "GEMINI"
+    fallback_reason: Optional[Literal["RATE_LIMITED", "UNAVAILABLE"]] = None
     attack: Optional[AttackTestCase] = None
     defender_assessment: Optional[HybridSecurityAssessment] = None
     defender_decision: Optional[Decision] = None

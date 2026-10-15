@@ -14,9 +14,9 @@ from pathlib import Path
 from typing import Optional
 
 from autogen_agentchat.agents import AssistantAgent
-from autogen_core.models import ModelFamily, UserMessage
+from autogen_core.models import ModelFamily
 from autogen_ext.models.openai import OpenAIChatCompletionClient
-from pydantic import BaseModel
+from pydantic import ValidationError
 
 from app.models.security import SecurityAssessment, Decision, AttackType
 
@@ -62,7 +62,7 @@ def create_gemini_model_client(model: Optional[str] = None) -> OpenAIChatComplet
     """Create a Gemini model client using the same configuration as test_gemini.py.
 
     Args:
-        model: Optional model name override. Defaults to GEMINI_MODEL env var or "gemini-3.6-flash".
+        model: Optional model name override. Defaults to GEMINI_MODEL env var or "gemini-3.8-flash".
 
     Returns:
         Configured OpenAIChatCompletionClient for Gemini.
@@ -149,8 +149,26 @@ class DefenderAgent:
                     delay,
                 )
                 await asyncio.sleep(delay)
-        # The structured output is in the last message
-        return result.messages[-1].content
+        messages = getattr(result, "messages", None)
+        if not isinstance(messages, (list, tuple)):
+            raise RuntimeError("Gemini returned an invalid Defender response payload")
+
+        for message in reversed(messages):
+            content = getattr(message, "content", None)
+            if isinstance(content, SecurityAssessment):
+                return content
+            if isinstance(content, dict):
+                try:
+                    return SecurityAssessment.model_validate(content)
+                except ValidationError:
+                    continue
+            if isinstance(content, str):
+                try:
+                    return SecurityAssessment.model_validate_json(content)
+                except ValidationError:
+                    continue
+
+        raise ValueError("Gemini did not return a valid structured security assessment")
 
     async def close(self) -> None:
         """Close the model client."""

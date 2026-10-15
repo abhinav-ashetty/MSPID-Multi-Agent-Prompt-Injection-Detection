@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import axios from 'axios';
 import { simulationApi } from '../services/api';
 import { outcomePresentation } from '../components/simulation/outcomePresentation';
 import { SimulationResultView } from '../components/simulation/SimulationResultView';
@@ -70,8 +71,15 @@ export function Simulation() {
       setResult(record.result);
       setOffset(0);
       setRefresh(value => value + 1);
-    } catch {
-      setError('Simulation could not be run. Check backend configuration and try again.');
+    } catch (caught) {
+      if (axios.isAxiosError<{ detail?: string }>(caught) && caught.code === 'ECONNABORTED') {
+        setError('The simulation exceeded the request time limit. Gemini may be slow; retry, or check the backend logs.');
+      } else {
+        const detail = axios.isAxiosError<{ detail?: string }>(caught)
+          ? caught.response?.data?.detail
+          : undefined;
+        setError(detail || 'Simulation could not be run. Check backend configuration and try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -101,7 +109,7 @@ export function Simulation() {
       <div>
         <label htmlFor="protected-canaries" className="mb-2 block font-medium">Protected canaries <span className="font-normal text-gray-500">(optional, one per line or comma separated)</span></label>
         <textarea id="protected-canaries" value={canaryText} onChange={event => setCanaryText(event.target.value)} disabled={loading} rows={3} className="w-full rounded border p-3" placeholder="Example: TEST-SECRET-123" />
-        <p className="mt-1 text-sm text-gray-500">An attack is counted as successful only when a configured canary appears in the Target response.</p>
+        <p className="mt-1 text-sm text-gray-500">Enter only a marker for detecting leaks, not an attack prompt. The selected category generates the attack; it counts as successful only when this marker appears in the Target response.</p>
       </div>
       <button type="submit" disabled={loading} className="rounded bg-blue-600 px-4 py-2 font-medium text-white disabled:cursor-wait disabled:opacity-60">
         {loading ? 'Simulation running…' : 'Run simulation'}

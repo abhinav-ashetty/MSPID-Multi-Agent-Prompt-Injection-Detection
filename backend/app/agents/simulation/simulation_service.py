@@ -1,5 +1,6 @@
 """Orchestration for offline-capable Attacker/Defender/Target simulations."""
 
+import asyncio
 import inspect
 import logging
 import uuid
@@ -27,6 +28,8 @@ DefenderAnalyzer = Callable[[str], Any]
 class SimulationService:
     """Run one controlled attack test with injectable agent dependencies."""
 
+    GEMINI_STAGE_TIMEOUT_SECONDS = 30
+
     def __init__(
         self,
         attacker: AttackerAgent,
@@ -43,6 +46,15 @@ class SimulationService:
     async def _await_if_needed(value: Any) -> Any:
         return await value if inspect.isawaitable(value) else value
 
+    @staticmethod
+    def _fallback_reason(exc: Exception) -> Optional[str]:
+        status_code = getattr(exc, "status_code", None)
+        if status_code == 429:
+            return "RATE_LIMITED"
+        if status_code == 503 or isinstance(exc, TimeoutError):
+            return "UNAVAILABLE"
+        return None
+
     async def run(self, request: SimulationRequest) -> SimulationResponse:
         """Generate, assess, execute, and evaluate one simulation case."""
 
@@ -53,21 +65,76 @@ class SimulationService:
             success_criterion=request.success_criterion,
         )
 
+        local_fallback = False
         try:
             attack_result = AttackTestCase.model_validate(
-                await self.attacker.generate(request.attack_category)
+                await asyncio.wait_for(
+                    self.attacker.generate(request.attack_category),
+                    timeout=self.GEMINI_STAGE_TIMEOUT_SECONDS,
+                )
             )
             if attack_result.category != request.attack_category or not attack_result.prompt.strip():
                 raise ValueError("Attacker returned an invalid test case")
             response.attack = attack_result
-        except Exception:
-            logger.warning("Simulation %s failed during attack generation", simulation_id)
-            response.failed_stage = "attacker"
-            response.error = "Attacker failed to produce a valid test case."
-            return response
+        except Exception as exc:
+            status_code = getattr(exc, "status_code", None)
+            fallback_reason = self._fallback_reason(exc)
+            if fallback_reason is None:
+                logger.warning(
+                    "Simulation %s failed during attack generation: %s (HTTP %s)",
+                    simulation_id,
+                    type(exc).__name__,
+                    status_code or "unknown",
+                )
+                response.failed_stage = "attacker"
+                response.error = "Attacker failed to produce a valid test case."
+                return response
+
+            attack_result = AttackerAgent.create_local_fallback(request.attack_category)
+            response.attack = attack_result
+            response.ai_mode = "LOCAL_FALLBACK"
+            response.fallback_reason = fallback_reason
+            local_fallback = True
+            logger.warning(
+                "Simulation %s is using a local attack prompt after Gemini became unavailable (HTTP %s)",
+                simulation_id,
+                status_code or "unknown",
+            )
 
         try:
-            defender_result = await self._await_if_needed(self.defender_analyzer(attack_result.prompt))
+            try:
+                if local_fallback:
+                    defender_result = self.defender_analyzer(
+                        attack_result.prompt,
+                        use_gemini=False,
+                    )
+                else:
+                    defender_result = self.defender_analyzer(attack_result.prompt)
+                defender_result = await asyncio.wait_for(
+                    self._await_if_needed(defender_result),
+                    timeout=self.GEMINI_STAGE_TIMEOUT_SECONDS,
+                )
+            except Exception as exc:
+                status_code = getattr(exc, "status_code", None)
+                fallback_reason = self._fallback_reason(exc)
+                if fallback_reason is None or local_fallback:
+                    raise
+
+                response.ai_mode = "LOCAL_FALLBACK"
+                response.fallback_reason = fallback_reason
+                logger.warning(
+                    "Simulation %s is using local Defender scoring after Gemini became unavailable (HTTP %s)",
+                    simulation_id,
+                    status_code or "unknown",
+                )
+                local_result = self.defender_analyzer(
+                    attack_result.prompt,
+                    use_gemini=False,
+                )
+                defender_result = await asyncio.wait_for(
+                    self._await_if_needed(local_result),
+                    timeout=self.GEMINI_STAGE_TIMEOUT_SECONDS,
+                )
             assessment = HybridSecurityAssessment.model_validate(defender_result)
             response.defender_assessment = assessment
             response.defender_decision = assessment.decision

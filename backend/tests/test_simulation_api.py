@@ -182,6 +182,16 @@ def test_unknown_simulation_returns_not_found(client):
     assert response.json()["detail"] == "Simulation was not found."
 
 
+def test_get_run_endpoint_explains_post_requirement(client):
+    response = client[0].get("/api/v1/simulations/run")
+
+    assert response.status_code == 405
+    assert response.headers["allow"] == "POST"
+    assert response.json()["detail"] == (
+        "Simulation runs require POST /api/v1/simulations/run with a JSON request body."
+    )
+
+
 def test_invalid_simulation_request_is_rejected(client):
     test_client, service, _ = client
 
@@ -217,6 +227,32 @@ def test_component_failure_is_persisted_without_internal_details(client):
     assert row.attack_category == "ROLE_MANIPULATION"
     assert row.prompt is None
     assert row.error == "Attacker failed to produce a valid test case."
+
+
+def test_local_fallback_mode_is_returned_and_persisted(client):
+    test_client, service, _ = client
+    service.run.return_value = service.run.return_value.model_copy(
+        update={
+            "ai_mode": "LOCAL_FALLBACK",
+            "fallback_reason": "RATE_LIMITED",
+        }
+    )
+
+    response = test_client.post(
+        "/api/v1/simulations/run",
+        json={"attack_category": "PROMPT_INJECTION"},
+    )
+
+    assert response.status_code == 201
+    result = response.json()["result"]
+    assert result["ai_mode"] == "LOCAL_FALLBACK"
+    assert result["fallback_reason"] == "RATE_LIMITED"
+
+    details = test_client.get(
+        f"/api/v1/simulations/{result['simulation_id']}"
+    )
+    assert details.status_code == 200
+    assert details.json()["result"]["ai_mode"] == "LOCAL_FALLBACK"
 
 
 def test_unhandled_service_exception_returns_generic_error(client):

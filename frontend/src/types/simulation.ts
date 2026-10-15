@@ -51,6 +51,8 @@ export interface LeakageMatch {
 export interface SimulationResult {
   simulation_id: string;
   outcome: SimulationOutcome;
+  ai_mode: 'GEMINI' | 'LOCAL_FALLBACK';
+  fallback_reason: 'RATE_LIMITED' | 'UNAVAILABLE' | null;
   attack: AttackTestCase | null;
   defender_assessment: HybridAssessmentSummary | null;
   defender_decision: Decision | null;

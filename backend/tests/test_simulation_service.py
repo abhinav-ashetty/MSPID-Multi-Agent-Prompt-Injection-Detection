@@ -1,5 +1,6 @@
 """Offline orchestration tests; no external model clients are used."""
 
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -33,6 +34,13 @@ def make_assessment(decision: Decision) -> HybridSecurityAssessment:
     )
 
 
+def make_local_assessment(decision: Decision = Decision.ALLOW) -> HybridSecurityAssessment:
+    assessment = make_assessment(decision)
+    assessment.gemini_used = False
+    assessment.gemini_risk_score = 0
+    return assessment
+
+
 class FakeAttacker:
     async def generate(self, category: AttackCategory) -> AttackTestCase:
         return AttackTestCase(
@@ -54,6 +62,15 @@ class InvalidTarget:
         return {"response": 42}
 
 
+class RateLimitedAttacker:
+    async def generate(self, category: AttackCategory) -> AttackTestCase:
+        raise ProviderRateLimited("quota exceeded")
+
+
+class ProviderRateLimited(Exception):
+    status_code = 429
+
+
 class CapturingTarget:
     def __init__(self, response: TargetResponse) -> None:
         self.response = response
@@ -70,6 +87,114 @@ def request() -> SimulationRequest:
         protected_canaries=["CANARY-SECRET"],
         success_criterion=SuccessCriterion.PROTECTED_CANARY_MATCH,
     )
+
+
+@pytest.mark.asyncio
+async def test_gemini_rate_limit_uses_labeled_local_fallback() -> None:
+    defender = AsyncMock(return_value=make_local_assessment())
+    service = SimulationService(
+        attacker=RateLimitedAttacker(),
+        target=LocalTargetAgent("A normal local response."),
+        defender_analyzer=defender,
+    )
+
+    result = await service.run(request())
+
+    assert result.ai_mode == "LOCAL_FALLBACK"
+    assert result.fallback_reason == "RATE_LIMITED"
+    assert result.attack is not None
+    assert "local fallback" in result.attack.description.lower()
+    assert result.defender_assessment is not None
+    assert result.defender_assessment.gemini_used is False
+    assert result.outcome == SimulationOutcome.NO_LEAK
+    defender.assert_awaited_once_with(result.attack.prompt, use_gemini=False)
+
+
+@pytest.mark.asyncio
+async def test_local_fallback_runs_real_local_defender_and_target() -> None:
+    service = SimulationService(
+        attacker=RateLimitedAttacker(),
+        target=LocalTargetAgent("A normal local response."),
+    )
+
+    result = await service.run(request())
+
+    assert result.ai_mode == "LOCAL_FALLBACK"
+    assert result.fallback_reason == "RATE_LIMITED"
+    assert result.defender_assessment is not None
+    assert result.defender_assessment.gemini_used is False
+    assert result.failed_stage is None
+    assert result.target_called is (
+        result.defender_decision is not None
+        and result.defender_decision != Decision.BLOCK
+    )
+
+
+@pytest.mark.asyncio
+async def test_slow_attacker_times_out_and_falls_back(monkeypatch) -> None:
+    class SlowAttacker:
+        async def generate(self, category: AttackCategory) -> AttackTestCase:
+            await asyncio.sleep(1)
+
+    monkeypatch.setattr(SimulationService, "GEMINI_STAGE_TIMEOUT_SECONDS", 0.01)
+    service = SimulationService(
+        attacker=SlowAttacker(),
+        target=LocalTargetAgent("A normal local response."),
+    )
+
+    result = await service.run(request())
+
+    assert result.ai_mode == "LOCAL_FALLBACK"
+    assert result.fallback_reason == "UNAVAILABLE"
+    assert result.attack is not None
+    assert result.defender_assessment is not None
+    assert result.defender_assessment.gemini_used is False
+    assert result.failed_stage is None
+
+
+@pytest.mark.asyncio
+async def test_slow_defender_times_out_and_falls_back_to_local_scoring(monkeypatch) -> None:
+    async def slow_defender(prompt: str, use_gemini: bool = True):
+        if use_gemini:
+            await asyncio.sleep(1)
+            return make_assessment(Decision.ALLOW)
+        return make_local_assessment()
+
+    monkeypatch.setattr(SimulationService, "GEMINI_STAGE_TIMEOUT_SECONDS", 0.01)
+    service = SimulationService(
+        attacker=FakeAttacker(),
+        target=LocalTargetAgent("A normal local response."),
+        defender_analyzer=slow_defender,
+    )
+
+    result = await service.run(request())
+
+    assert result.ai_mode == "LOCAL_FALLBACK"
+    assert result.fallback_reason == "UNAVAILABLE"
+    assert result.defender_assessment is not None
+    assert result.defender_assessment.gemini_used is False
+    assert result.failed_stage is None
+
+
+@pytest.mark.asyncio
+async def test_gemini_rate_limit_during_defender_uses_local_scoring() -> None:
+    defender = AsyncMock(
+        side_effect=[ProviderRateLimited("quota exceeded"), make_local_assessment()]
+    )
+    service = SimulationService(
+        attacker=FakeAttacker(),
+        target=LocalTargetAgent("A normal local response."),
+        defender_analyzer=defender,
+    )
+
+    result = await service.run(request())
+
+    assert result.ai_mode == "LOCAL_FALLBACK"
+    assert result.fallback_reason == "RATE_LIMITED"
+    assert result.defender_assessment is not None
+    assert result.defender_assessment.gemini_used is False
+    assert result.outcome == SimulationOutcome.NO_LEAK
+    assert defender.await_args_list[1].kwargs == {"use_gemini": False}
 
 
 @pytest.mark.asyncio

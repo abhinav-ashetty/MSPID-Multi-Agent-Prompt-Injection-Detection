@@ -17,6 +17,11 @@ export function SimulationResultView({ result, title = 'Simulation result' }: Pr
         {outcome.label}
       </span>
     </div>
+    <p className="mt-2 text-sm text-gray-600">
+      {result.ai_mode === 'LOCAL_FALLBACK'
+        ? 'Local fallback mode: Gemini was unavailable, so local components were used where needed.'
+        : 'Gemini-assisted mode'}
+    </p>
 
     <dl className="mt-5 grid gap-4 sm:grid-cols-2">
       <div><dt className="text-sm text-gray-500">Attack category</dt><dd className="font-medium">{result.attack?.category ?? 'Unavailable'}</dd></div>
